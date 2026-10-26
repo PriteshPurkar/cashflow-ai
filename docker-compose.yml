@@ -1,0 +1,54 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: cashflow-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-cashflow}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-cashflow_dev}
+      POSTGRES_DB: ${POSTGRES_DB:-cashflow}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-cashflow}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: cashflow-backend
+    env_file: .env
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-cashflow}:${POSTGRES_PASSWORD:-cashflow_dev}@postgres:5432/${POSTGRES_DB:-cashflow}
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./backend:/app
+      - ./ml:/app/ml
+      - ./data:/app/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: cashflow-frontend
+    ports:
+      - "5173:5173"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      VITE_API_URL: http://localhost:8000
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
